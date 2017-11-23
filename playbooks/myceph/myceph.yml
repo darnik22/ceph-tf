@@ -1,0 +1,59 @@
+- hosts: all
+  become: yes
+  become_user: root
+  tasks:
+#    - name: Wait for hosts to come up
+#      wait_for:
+#        timeout: 10
+    - name: Install fio, iotop
+      apt: name={{item}} state=installed 
+      with_items:
+        - fio
+        - iotop
+        - python-apt
+    - name: Add apt key for Ceph
+      apt_key:
+        url: https://download.ceph.com/keys/release.asc
+        state: present
+    - name: Add Ceph repo
+      apt_repository:
+        repo: deb https://download.ceph.com/debian-luminous/ {{ansible_distribution_release}} main
+        state: present
+    - name: Update apt
+      apt:
+        update_cache: yes
+    - name: Install ceph-deploy
+      apt: 
+        name: ceph-deploy
+        state: installed 
+
+- hosts: mgt
+  tasks:
+    - name: New Ceph 
+      shell: ceph-deploy new {{item}}
+      with_inventory_hostnames:
+        - mons
+    - name: Install Ceph
+#      shell: ceph-deploy install --release=luminous {{groups["osds"]}}
+      shell: ceph-deploy install --release=luminous {{item}}
+      with_inventory_hostnames:
+        - osds
+        - mons
+        - mgt
+    - name: Mon create initial Ceph
+      shell: ceph-deploy --overwrite-conf mon create-initial 
+    - name: Admin Ceph
+      shell: ceph-deploy --overwrite-conf admin {{item}}
+      with_inventory_hostnames:
+        - osds
+        - mons
+        - mgt
+    - name: Mgr create Ceph
+      shell: ceph-deploy mgr create {{item}}
+      with_inventory_hostnames:
+        - mons
+    - name: OSD create Ceph
+      shell: ceph-deploy osd create {{item}}:xvdb
+      with_inventory_hostnames:
+        - osds
+

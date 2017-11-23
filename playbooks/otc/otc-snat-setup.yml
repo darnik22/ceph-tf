@@ -1,0 +1,26 @@
+- hosts: osds
+  become: yes
+  become_user: root
+  tasks:
+   - name: Set ipv4 forwarding
+     sysctl:
+       name: net.ipv4.ip_forward
+       value: 1
+       sysctl_set: yes
+   - name: SNAT Rule
+     iptables:
+       table: nat
+       action: insert
+       chain: POSTROUTING
+       out_interface: eth0
+#       source: "{{ ansible_eth0.ipv4.network }}/24"
+#       netmask = "{{ ansible_default_ipv4.network }}/{{ ansible_default_ipv4.netmask }}"
+       source: "{{ [ansible_eth0.ipv4.network, ansible_default_ipv4.netmask] | join('/') | ipaddr('net') }}"
+       jump: SNAT
+#       to_source: 192.168.1.141
+#       TODO nemask cidr: http://docs.ansible.com/ansible/latest/playbooks_filters_ipaddr.html#converting-subnet-masks-to-cidr-notation
+       to_source: "{{ ansible_eth0.ipv4.address }}"
+   - debug: var=ansible_eth0.ipv4.address
+   - debug: var=hostvars[inventory_hostname]
+       
+
