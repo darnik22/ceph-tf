@@ -58,6 +58,7 @@ resource "null_resource" "provision-osd" {
     host     = "${element(openstack_networking_floatingip_v2.ceph-osds.*.address, count.index)}"
     user     = "${var.ssh_user_name}"
     private_key = "${file(var.ssh_key_file)}"
+    timeout = "30s"
   }
   provisioner "remote-exec" {
     inline = [
@@ -68,6 +69,7 @@ resource "null_resource" "provision-osd" {
   }
   provisioner "remote-exec" {
     when = "destroy"
+    on_failure = "continue"
     inline = [
       "echo Halting...",
       "sudo halt -p",
