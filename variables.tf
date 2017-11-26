@@ -21,9 +21,9 @@ variable "external_network" {
 }
 
 ### Project Settings
-# variable "project" {
+variable "project" {
 #   default = "od"
-# }
+}
 
 variable "ssh_user_name" {
   default = "ubuntu"
