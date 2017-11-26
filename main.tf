@@ -26,6 +26,7 @@ resource "openstack_compute_instance_v2" "ceph-mgt" {
   image_name      = "${var.image_name}"				#"bitnami-ceph-osdstack-7.0.22-1-linux-centos-7-x86_64-mp"
   flavor_name     = "${var.flavor_name}"
   key_pair        = "${openstack_compute_keypair_v2.otc.name}"
+  availability_zone = "${var.availability_zone}"
   security_groups = [
     "${openstack_compute_secgroup_v2.secgrp_jmp.name}",
     "${openstack_compute_secgroup_v2.secgrp_ceph.name}"
@@ -60,8 +61,16 @@ resource "null_resource" "provision-osd" {
   }
   provisioner "remote-exec" {
     inline = [
+      "echo Instaling python ...",
       "sudo apt-get -y update",
       "sudo apt-get -y install python",
+    ]
+  }
+  provisioner "remote-exec" {
+    when = "destroy"
+    inline = [
+      "echo Halting...",
+      "sudo halt -p",
     ]
   }
 }
@@ -125,7 +134,7 @@ resource "null_resource" "provision-mgt" {
       "sudo cp etc/ansible-hosts /etc/ansible/hosts",
       "sudo cp etc/ssh_config /etc/ssh/ssh_config",
       #      "ansible-playbook playbooks/otc/otc-snat-setup.yml",
-      "ansible-playbook playbooks/myceph/myceph.yml",
+      "ansible-playbook playbooks/myceph/myceph.yml --extra-vars \"osd_disks=${var.disks-per-osd_count}\"",
 #      "ansible-playbook playbooks/ceph-ansible/site.yml",
     ]
   }
@@ -138,6 +147,7 @@ resource "openstack_compute_instance_v2" "ceph-osds" {
   image_name      = "${var.image_name}"				#"bitnami-ceph-osdstack-7.0.22-1-linux-centos-7-x86_64-mp"
   flavor_name     = "${var.flavor_name}"
   key_pair        = "${openstack_compute_keypair_v2.otc.name}"
+  availability_zone = "${var.availability_zone}"
   security_groups = [
     "${openstack_compute_secgroup_v2.secgrp_ceph.name}"
   ]
@@ -168,6 +178,7 @@ resource "openstack_compute_instance_v2" "ceph-mons" {
   image_name      = "${var.image_name}"				#"bitnami-ceph-osdstack-7.0.22-1-linux-centos-7-x86_64-mp"
   flavor_name     = "${var.flavor_name}"
   key_pair        = "${openstack_compute_keypair_v2.otc.name}"
+  availability_zone = "${var.availability_zone}"
   security_groups = [
     "${openstack_compute_secgroup_v2.secgrp_ceph.name}"
   ]
@@ -192,7 +203,7 @@ resource "openstack_networking_port_v2" "mons-port" {
 }
 
 resource "openstack_compute_keypair_v2" "otc" {
-  name       = "otc"
+  name       = "otc2"
   public_key = "${file("${var.ssh_key_file}.pub")}"
 }
 
@@ -285,13 +296,15 @@ resource "openstack_compute_secgroup_v2" "secgrp_ceph" {
 }
 
 resource "openstack_blockstorage_volume_v2" "vols" {
-  count           = "${var.ceph-osd_count}"
-  name = "${format("vol%02d", count.index + 1)}"
-  size = 50
+  count           = "${var.ceph-osd_count * var.disks-per-osd_count}"
+  name = "${var.project}-${format("vol-%03d", count.index + 1)}"
+  size = "${var.vol_size}"
+  volume_type = "${var.vol_type}"
+  availability_zone = "${var.availability_zone}"
 }
 
 resource "openstack_compute_volume_attach_v2" "vas" {
-  count           = "${var.ceph-osd_count}"
-  instance_id = "${element(openstack_compute_instance_v2.ceph-osds.*.id, count.index)}"
+  count           = "${var.ceph-osd_count * var.disks-per-osd_count}"
+  instance_id = "${element(openstack_compute_instance_v2.ceph-osds.*.id, count.index / var.disks-per-osd_count)}"
   volume_id   = "${element(openstack_blockstorage_volume_v2.vols.*.id, count.index)}"
 }

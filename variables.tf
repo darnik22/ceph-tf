@@ -21,16 +21,17 @@ variable "external_network" {
 }
 
 ### Project Settings
-variable "project" {
-  default = "daro2"
-}
+# variable "project" {
+#   default = "od"
+# }
 
 variable "ssh_user_name" {
   default = "ubuntu"
 }
 
 variable "ssh_key_file" {
-  default = "~/.ssh/id_rsa"
+#  default = "~/.ssh/id_rsa"
+  default = "keys/id_rsa"
 }
 
 ### VM (Instance) Settings
@@ -47,9 +48,26 @@ variable "ceph-osd_count" {
 }
 
 variable "flavor_name" {
-  default = "s1.medium"
+  default = "h1.large.4"
+#  default = "hl1.8xlarge.8"
 }
 
 variable "image_name" {
   default = "Community_Ubuntu_16.04_TSI_latest"
+}
+
+variable "availability_zone" {
+  default = "eu-de-01"
+}
+
+variable "vol_size" {
+  default = "100"
+}
+
+variable "vol_type" {
+  default = "SSD"
+}
+
+variable "disks-per-osd_count" {
+  default = "3"
 }

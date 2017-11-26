@@ -1,24 +1,17 @@
-output "ceph-mgt address" {
+output "ceph-mgt public address" {
   value = "${openstack_networking_floatingip_v2.ceph-mgt.address}"
 }
 
-output "ceph-osd address" {
-  value = "${openstack_compute_instance_v2.ceph-osds.*.access_ip_v4}"
+output "ceph-mon address" {
+  value = "${openstack_compute_instance_v2.ceph-mons.*.access_ip_v4}"
 }
 
-output "boza" {
-  value = "${openstack_compute_instance_v2.ceph-osds.*.name}"
-}
+# output "ceph-osd address" {
+#   value = "${openstack_compute_instance_v2.ceph-osds.*.access_ip_v4}"
+# }
 
-output "port" {
-  value = "${openstack_compute_instance_v2.ceph-mgt.port}"
-}
+# output "ceph-osd names" {
+#   value = "${openstack_compute_instance_v2.ceph-osds.*.name}"
+# }
 
-output "boza2" {
-  value = "${openstack_compute_instance_v2.ceph-osds.*.name}"
-}
-
-output "ceph-mgt address2" {
-  value = "${openstack_networking_floatingip_v2.ceph-mgt.address}"
-}
 

@@ -22,28 +22,46 @@
     - name: Update apt
       apt:
         update_cache: yes
-    - name: Install ceph-deploy
-      apt: 
-        name: ceph-deploy
-        state: installed 
+    # - name: Install ceph-deploy
+    #   apt: 
+    #     name: ceph-deploy
+    #     state: installed 
+    - name: Install ceph packages
+      apt: name={{item}} state=installed 
+      with_items:
+        - ceph-deploy
+        - ceph
+        - ceph-mds
+        - ceph-mgr
+        - ceph-mon
+        - ceph-osd
 
 - hosts: mgt
   tasks:
+#    - name: Print groups
+#      debug: 
+#        var: groups
+#    - name: Print vars
+#      debug: 
+#        var: vars
+#    - name: Print hostvars
+#      debug: 
+#        var: hostvars
     - name: New Ceph 
-      shell: ceph-deploy new {{item}}
-      with_inventory_hostnames:
-        - mons
-    - name: Install Ceph
-#      shell: ceph-deploy install --release=luminous {{groups["osds"]}}
-      shell: ceph-deploy install --release=luminous {{item}}
-      with_inventory_hostnames:
-        - osds
-        - mons
-        - mgt
+      shell: ceph-deploy new {{ groups['mons']|join( " " ) }}
+#      with_inventory_hostnames:
+#        - mons[1]
+#     - name: Install Ceph
+# #      shell: ceph-deploy install --release=luminous {{groups["osds"]}}
+#       shell: ceph-deploy install --release=luminous {{item}}
+#       with_inventory_hostnames:
+#         - osds
+#         - mons
+#         - mgt
     - name: Mon create initial Ceph
-      shell: ceph-deploy --overwrite-conf mon create-initial 
+      shell: ceph-deploy mon create-initial 
     - name: Admin Ceph
-      shell: ceph-deploy --overwrite-conf admin {{item}}
+      shell: ceph-deploy admin {{item}}
       with_inventory_hostnames:
         - osds
         - mons
@@ -52,8 +70,23 @@
       shell: ceph-deploy mgr create {{item}}
       with_inventory_hostnames:
         - mons
-    - name: OSD create Ceph
-      shell: ceph-deploy osd create {{item}}:xvdb
-      with_inventory_hostnames:
-        - osds
+    # - name: OSD create Ceph
+    #   shell: ceph-deploy osd create {{item}}:xvdb
+    #   with_inventory_hostnames:
+    #     - osds
 
+        # TODO
+- hosts: osds
+  tasks:
+  - name: Copy this-prepare-osds.sh
+    copy:
+      src: this-prepare-osds.sh
+      dest: ~/this-prepare-osds.sh
+      mode: 0500
+  - name: Prepare OSDs
+    shell: ~/this-prepare-osds.sh {{ osd_disks }}   # Prepare 6 OSDs on the current host. Assume first disk is /dev/xvdb,
+                                           # second /dev/xvdc and so on
+- hosts: mgt
+  tasks:
+  - name: Create pool onedata
+    shell: sudo ceph osd pool create onedata 128
