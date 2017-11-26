@@ -26,11 +26,12 @@ sudo ceph -s
 ```
 git clone
 cd ceph-tf
-ssh-keygen keys/id_rsa
+mkdir keys
+ssh-keygen -f keys/id_rsa
 vi parameter.tvars
 vi variables.tf
 terraform init
-terraform apply -var-file parameter.tvars -var
+terraform apply -var-file parameter.tvars
 ssh -i keys/id_rsa ubuntu@THE_IP_OF_MGT
 sudo ceph -s
 ```
