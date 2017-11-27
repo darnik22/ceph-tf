@@ -24,7 +24,7 @@ sudo ceph -s
 
 ## Example command flow
 ```
-git clone
+git clone https://github.com/darnik22/ceph-tf.git
 cd ceph-tf
 mkdir keys
 ssh-keygen -f keys/id_rsa
