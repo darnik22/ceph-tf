@@ -15,7 +15,9 @@ terraform apply -var-file parameter.tvars
 
 ## Accessing your Ceph cluster
 After a successful built the public IP of the cluster management node is displayed. Use it to login:
-```ssh -i keys/id_rsa ubuntu@THE_IP```
+```
+ssh -i keys/id_rsa ubuntu@THE_IP
+```
 
 Check that Ceph is running:
 ```
