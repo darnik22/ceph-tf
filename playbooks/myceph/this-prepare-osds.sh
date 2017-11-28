@@ -6,9 +6,10 @@ if [ " "$1 = " " ]; then
   exit 1;
 fi
 NUM_DISKS=$1
+VOL_PREFIX=$2
 i=1
 for c in {b..z}; do
-    DISK=/dev/xvd${c}
+    DISK=${VOL_PREFIX}${c}
     OSD_ID=`sudo ceph osd create`
     echo OSD_ID=${OSD_ID}
     sudo mkdir /var/lib/ceph/osd/ceph-${OSD_ID}

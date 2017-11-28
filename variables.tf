@@ -40,7 +40,7 @@ variable "ceph-mgt_count" {
 }
 
 variable "ceph-mon_count" {
-  default = "3"
+  default = "1"
 }
 
 variable "ceph-osd_count" {
@@ -49,7 +49,7 @@ variable "ceph-osd_count" {
 
 variable "flavor_name" {
   default = "h1.large.4"
-#  default = "hl1.8xlarge.8"
+#  default = "hl1.8xlarge.8" # Setting this flavor may require setting vol_type and vol_prefix
 }
 
 variable "image_name" {
@@ -66,8 +66,22 @@ variable "vol_size" {
 
 variable "vol_type" {
   default = "SSD"
+#  default = "co-p1"
+}
+
+variable "vol_prefix" {
+  default = "/dev/xvd"
+#  default = "/dev/vd"
 }
 
 variable "disks-per-osd_count" {
-  default = "3"
+  default = "2"
+}
+
+variable "client_count" {
+  default = "2"
+}
+
+variable "client_flavor_name" {
+  default = "h1.xlarge.4"
 }

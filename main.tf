@@ -21,8 +21,8 @@ resource "openstack_networking_floatingip_v2" "ceph-mons" {
 
 resource "openstack_compute_instance_v2" "ceph-mgt" {
   depends_on = ["openstack_networking_router_interface_v2.interface"]
-  count           = "${var.ceph-mgt_count}"
-  name            = "${var.project}-ceph-mgt${format("%02d", count.index+1)}"
+#  count           = "${var.ceph-mgt_count}"
+  name            = "${var.project}-ceph-mgt"
   image_name      = "${var.image_name}"				#"bitnami-ceph-osdstack-7.0.22-1-linux-centos-7-x86_64-mp"
   flavor_name     = "${var.flavor_name}"
   key_pair        = "${openstack_compute_keypair_v2.otc.name}"
@@ -58,10 +58,11 @@ resource "null_resource" "provision-osd" {
     host     = "${element(openstack_networking_floatingip_v2.ceph-osds.*.address, count.index)}"
     user     = "${var.ssh_user_name}"
     private_key = "${file(var.ssh_key_file)}"
-    timeout = "30s"
+    timeout = "120s"
   }
   provisioner "remote-exec" {
     inline = [
+#      "sudo apt-add-repository -y 'deb http://nova.clouds.archive.ubuntu.com/ubuntu/ xenial main restricted universe multiverse'", # if debmirror at OTC is not working
       "echo Instaling python ...",
       "sudo apt-get -y update",
       "sudo apt-get -y install python",
@@ -87,6 +88,7 @@ resource "null_resource" "provision-mon" {
   }
   provisioner "remote-exec" {
     inline = [
+#      "sudo apt-add-repository -y 'deb http://nova.clouds.archive.ubuntu.com/ubuntu/ xenial main restricted universe multiverse'", # if debmirror at OTC is not working
       "sudo apt-get -y update",
       "sudo apt-get -y install python",
     ]
@@ -94,9 +96,9 @@ resource "null_resource" "provision-mon" {
 }
 
 resource "null_resource" "provision-mgt" {
-  depends_on = ["openstack_networking_floatingip_v2.ceph-mgt","null_resource.provision-osd","null_resource.provision-mon"]
+  depends_on = ["openstack_networking_floatingip_v2.ceph-mgt","null_resource.provision-osd","null_resource.provision-mon","openstack_compute_volume_attach_v2.vas"]
   provisioner "local-exec" {
-    command = "./local-setup.sh ${var.project} ${var.ceph-mon_count} ${var.ceph-osd_count}"
+    command = "./local-setup.sh ${var.project} ${var.ceph-mon_count} ${var.ceph-osd_count} ${var.client_count}"
   }
   triggers {
     cluster_instance_ids = "${join(",", openstack_networking_floatingip_v2.ceph-mgt.*.address)}"
@@ -115,7 +117,7 @@ resource "null_resource" "provision-mgt" {
     destination = "playbooks.tgz"
   }
   provisioner "file" {
-    content = "${join("\n", formatlist("%s %s", openstack_compute_instance_v2.ceph-osds.*.access_ip_v4, openstack_compute_instance_v2.ceph-osds.*.name))}\n${join("\n", formatlist("%s %s", openstack_compute_instance_v2.ceph-mons.*.access_ip_v4, openstack_compute_instance_v2.ceph-mons.*.name))}\n${join("\n", formatlist("%s %s", openstack_compute_instance_v2.ceph-mgt.*.access_ip_v4, openstack_compute_instance_v2.ceph-mgt.*.name))}\n"
+    content = "${join("\n", formatlist("%s %s", openstack_compute_instance_v2.ceph-osds.*.access_ip_v4, openstack_compute_instance_v2.ceph-osds.*.name))}\n${join("\n", formatlist("%s %s", openstack_compute_instance_v2.ceph-mons.*.access_ip_v4, openstack_compute_instance_v2.ceph-mons.*.name))}\n${join("\n", formatlist("%s %s", openstack_compute_instance_v2.ceph-mgt.*.access_ip_v4, openstack_compute_instance_v2.ceph-mgt.*.name))}\n${join("\n", formatlist("%s %s", openstack_compute_instance_v2.clients.*.access_ip_v4, openstack_compute_instance_v2.clients.*.name))}\n"
     destination = "hosts.tmp"
   }
   provisioner "file" {
@@ -127,6 +129,7 @@ resource "null_resource" "provision-mgt" {
       "chmod 600 .ssh/id_rsa",
       "sudo sh -c 'cat hosts.tmp >> /etc/hosts'",
       "sudo apt-get -y update",
+#      "sudo apt-add-repository -y 'deb http://nova.clouds.archive.ubuntu.com/ubuntu/ xenial main restricted universe multiverse'", # if debmirror at OTC is not working
       "sudo apt-get -y install software-properties-common",
       "sudo apt-add-repository -y ppa:ansible/ansible",
       "sudo apt-get -y update",
@@ -136,7 +139,7 @@ resource "null_resource" "provision-mgt" {
       "sudo cp etc/ansible-hosts /etc/ansible/hosts",
       "sudo cp etc/ssh_config /etc/ssh/ssh_config",
       #      "ansible-playbook playbooks/otc/otc-snat-setup.yml",
-      "ansible-playbook playbooks/myceph/myceph.yml --extra-vars \"osd_disks=${var.disks-per-osd_count}\"",
+      "ansible-playbook playbooks/myceph/myceph.yml --extra-vars \"osd_disks=${var.disks-per-osd_count} vol_prefix=${var.vol_prefix}\"",
 #      "ansible-playbook playbooks/ceph-ansible/site.yml",
     ]
   }
@@ -145,7 +148,7 @@ resource "null_resource" "provision-mgt" {
 resource "openstack_compute_instance_v2" "ceph-osds" {
   depends_on = ["openstack_networking_router_interface_v2.interface"]
   count           = "${var.ceph-osd_count}"
-  name            = "${var.project}-ceph-osd${format("%02d", count.index+1)}"
+  name            = "${var.project}-ceph-osd-${format("%02d", count.index+1)}"
   image_name      = "${var.image_name}"				#"bitnami-ceph-osdstack-7.0.22-1-linux-centos-7-x86_64-mp"
   flavor_name     = "${var.flavor_name}"
   key_pair        = "${openstack_compute_keypair_v2.otc.name}"
@@ -176,7 +179,7 @@ resource "openstack_networking_port_v2" "osds-port" {
 resource "openstack_compute_instance_v2" "ceph-mons" {
   depends_on = ["openstack_networking_router_interface_v2.interface"]
   count           = "${var.ceph-mon_count}"
-  name            = "${var.project}-ceph-mon${format("%02d", count.index+1)}"
+  name            = "${var.project}-ceph-mon-${format("%02d", count.index+1)}"
   image_name      = "${var.image_name}"				#"bitnami-ceph-osdstack-7.0.22-1-linux-centos-7-x86_64-mp"
   flavor_name     = "${var.flavor_name}"
   key_pair        = "${openstack_compute_keypair_v2.otc.name}"

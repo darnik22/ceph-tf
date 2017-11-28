@@ -1,4 +1,4 @@
-Host !PROJECT-ceph-*
+Host !PROJECT-*
         GSSAPIAuthentication yes
         ForwardX11Trusted yes
         SendEnv LANG LC_CTYPE LC_NUMERIC LC_TIME LC_COLLATE LC_MONETARY LC_MESSAGES
@@ -9,6 +9,6 @@ Host !PROJECT-ceph-*
         VerifyHostKeyDNS ask
         ForwardAgent yes
         GatewayPorts no
-Host PROJECT-ceph-*
+Host PROJECT-*
         StrictHostKeyChecking no
         VerifyHostKeyDNS no
