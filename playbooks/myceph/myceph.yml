@@ -7,6 +7,10 @@
 #        timeout: 10
 #    - name: Temporarily disable OTC debmirror # Use it when OTC debmirror is down
 #      shell: sudo sed -i 's/^deb http:\/\/debmirror/\#deb http:\/\/debmirror/' /etc/apt/sources.list   
+    - name: Copy sources.list
+      copy:
+        src: /etc/apt/sources.list
+        dest: /etc/apt/sources.list
     - name: Install fio, iotop
       apt: name={{item}} state=installed 
       with_items:
@@ -105,9 +109,10 @@
     shell: sudo ceph fs new cephfs cephfs_metadata cephfs_data
   - name: Crush tunables hammer
     shell: sudo ceph osd crush tunables hammer
-     
+  - name: Enable dashboard
+    shell: sudo ceph mgr module enable dashboard
 
-- hosts: clients
+- hosts: ops
   tasks:
   - name: Copy /etc/hosts
     become: yes

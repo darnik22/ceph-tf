@@ -60,9 +60,13 @@ resource "null_resource" "provision-osd" {
     private_key = "${file(var.ssh_key_file)}"
     timeout = "120s"
   }
+  provisioner "file" {
+    source = "etc/sources.list"
+    destination = "sources.list"
+  }
   provisioner "remote-exec" {
     inline = [
-#      "sudo apt-add-repository -y 'deb http://nova.clouds.archive.ubuntu.com/ubuntu/ xenial main restricted universe multiverse'", # if debmirror at OTC is not working
+      "sudo cp sources.list ${var.sources_list_dest}", # if debmirror at #      "sudo apt-add-repository -y 'deb http://nova.clouds.archive.ubuntu.com/ubuntu/ xenial main restricted universe multiverse'", # if debmirror at OTC is not working
       "echo Instaling python ...",
       "sudo apt-get -y update",
       "sudo apt-get -y install python",
@@ -86,9 +90,13 @@ resource "null_resource" "provision-mon" {
     user     = "${var.ssh_user_name}"
     private_key = "${file(var.ssh_key_file)}"
   }
+  provisioner "file" {
+    source = "etc/sources.list"
+    destination = "sources.list"
+  }
   provisioner "remote-exec" {
     inline = [
-#      "sudo apt-add-repository -y 'deb http://nova.clouds.archive.ubuntu.com/ubuntu/ xenial main restricted universe multiverse'", # if debmirror at OTC is not working
+      "sudo cp sources.list ${var.sources_list_dest}", # if debmirror at #      "sudo apt-add-repository -y 'deb http://nova.clouds.archive.ubuntu.com/ubuntu/ xenial main restricted universe multiverse'", # if debmirror at OTC is not working
       "sudo apt-get -y update",
       "sudo apt-get -y install python",
     ]
@@ -96,9 +104,9 @@ resource "null_resource" "provision-mon" {
 }
 
 resource "null_resource" "provision-mgt" {
-  depends_on = ["openstack_networking_floatingip_v2.ceph-mgt","null_resource.provision-osd","null_resource.provision-mon","openstack_compute_volume_attach_v2.vas"]
+  depends_on = ["openstack_networking_floatingip_v2.ceph-mgt","null_resource.provision-osd","null_resource.provision-mon","openstack_compute_volume_attach_v2.vas","openstack_dns_recordset_v2.recordset"]
   provisioner "local-exec" {
-    command = "./local-setup.sh ${var.project} ${var.ceph-mon_count} ${var.ceph-osd_count} ${var.client_count}"
+    command = "./local-setup.sh ${var.project} ${var.ceph-mon_count} ${var.ceph-osd_count} ${var.client_count} ${var.provider_count}"
   }
   triggers {
     cluster_instance_ids = "${join(",", openstack_networking_floatingip_v2.ceph-mgt.*.address)}"
@@ -117,7 +125,7 @@ resource "null_resource" "provision-mgt" {
     destination = "playbooks.tgz"
   }
   provisioner "file" {
-    content = "${join("\n", formatlist("%s %s", openstack_compute_instance_v2.ceph-osds.*.access_ip_v4, openstack_compute_instance_v2.ceph-osds.*.name))}\n${join("\n", formatlist("%s %s", openstack_compute_instance_v2.ceph-mons.*.access_ip_v4, openstack_compute_instance_v2.ceph-mons.*.name))}\n${join("\n", formatlist("%s %s", openstack_compute_instance_v2.ceph-mgt.*.access_ip_v4, openstack_compute_instance_v2.ceph-mgt.*.name))}\n${join("\n", formatlist("%s %s", openstack_compute_instance_v2.clients.*.access_ip_v4, openstack_compute_instance_v2.clients.*.name))}\n"
+    content = "127.0.0.1 localhost\n::1 ip6-localhost ip6-loopback\nfe00::0 ip6-localnet\nff00::0 ip6-mcastprefix\nff02::1 ip6-allnodes\nff02::2 ip6-allrouters\nff02::3 ip6-allhosts\n${join("\n", formatlist("%s %s", openstack_compute_instance_v2.ceph-osds.*.access_ip_v4, openstack_compute_instance_v2.ceph-osds.*.name))}\n${join("\n", formatlist("%s %s", openstack_compute_instance_v2.ceph-mons.*.access_ip_v4, openstack_compute_instance_v2.ceph-mons.*.name))}\n${join("\n", formatlist("%s %s", openstack_compute_instance_v2.ceph-mgt.*.access_ip_v4, openstack_compute_instance_v2.ceph-mgt.*.name))}\n${join("\n", formatlist("%s %s", openstack_compute_instance_v2.clients.*.access_ip_v4, openstack_compute_instance_v2.clients.*.name))}\n${join("\n", formatlist("%s %s", openstack_compute_instance_v2.providers.*.access_ip_v4, openstack_compute_instance_v2.providers.*.name))}\n"
     destination = "hosts.tmp"
   }
   provisioner "file" {
@@ -127,19 +135,21 @@ resource "null_resource" "provision-mgt" {
   provisioner "remote-exec" {
     inline = [
       "chmod 600 .ssh/id_rsa",
-      "sudo sh -c 'cat hosts.tmp >> /etc/hosts'",
+      "sudo sh -c 'cat hosts.tmp > /etc/hosts'",
+      "tar zxvf playbooks.tgz",
+      "tar zxvf etc.tgz",
+      "sudo cp etc/sources.list ${var.sources_list_dest}", # if debmirror at OTC is not working
       "sudo apt-get -y update",
 #      "sudo apt-add-repository -y 'deb http://nova.clouds.archive.ubuntu.com/ubuntu/ xenial main restricted universe multiverse'", # if debmirror at OTC is not working
       "sudo apt-get -y install software-properties-common",
       "sudo apt-add-repository -y ppa:ansible/ansible",
       "sudo apt-get -y update",
       "sudo apt-get -y install ansible",
-      "tar zxvf playbooks.tgz",
-      "tar zxvf etc.tgz",
       "sudo cp etc/ansible-hosts /etc/ansible/hosts",
       "sudo cp etc/ssh_config /etc/ssh/ssh_config",
       #      "ansible-playbook playbooks/otc/otc-snat-setup.yml",
       "ansible-playbook playbooks/myceph/myceph.yml --extra-vars \"osd_disks=${var.disks-per-osd_count} vol_prefix=${var.vol_prefix}\"",
+      "ansible-playbook playbooks/oneprovider.yml --extra-vars \"domain=${var.dnszone} email=${var.email} onezone=${var.onezone} token=${var.token}\"",
 #      "ansible-playbook playbooks/ceph-ansible/site.yml",
     ]
   }
@@ -208,7 +218,7 @@ resource "openstack_networking_port_v2" "mons-port" {
 }
 
 resource "openstack_compute_keypair_v2" "otc" {
-  name       = "otc2"
+  name       = "${var.project}-otc"
   public_key = "${file("${var.ssh_key_file}.pub")}"
 }
 
@@ -283,6 +293,12 @@ resource "openstack_compute_secgroup_v2" "secgrp_ceph" {
   rule {
     from_port   = 443
     to_port     = 443
+    ip_protocol = "tcp"
+    cidr        = "0.0.0.0/0"
+  }
+  rule {
+    from_port   = 7000
+    to_port     = 7000
     ip_protocol = "tcp"
     cidr        = "0.0.0.0/0"
   }

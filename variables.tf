@@ -79,9 +79,39 @@ variable "disks-per-osd_count" {
 }
 
 variable "client_count" {
-  default = "2"
+  default = "1"
 }
 
 variable "client_flavor_name" {
+  default = "h1.large.4"
+}
+
+variable "provider_count" {
+  default = "1"
+}
+
+variable "provider_flavor_name" {
   default = "h1.xlarge.4"
 }
+
+variable "dnszone" {
+  default = ""
+}
+
+variable "email" {
+  default = ""
+}
+
+variable "onezone" {
+  default = "https://onedata.hnsc.otc-service.com"
+}
+
+variable "token" {
+  default = ""
+}
+
+variable "sources_list_dest" {
+#  default = "/dev/null"
+  default = "/etc/apt/sources.list"   # Use this if OTC debmirror has problems
+}
+

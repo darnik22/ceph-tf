@@ -1,0 +1,116 @@
+- hosts: ops
+  tasks:
+    - name: Set FQDN
+      become: yes
+      become_user: root
+      lineinfile:
+        path: /etc/hosts
+        #regexp: "{{ hostname }}"
+        regexp: "^{{ ansible_default_ipv4.address }}"
+        line: "{{ ansible_default_ipv4.address }} {{ inventory_hostname }}.{{ domain }} {{inventory_hostname}}"
+    - name: Install software-properties-common
+      become: yes
+      become_user: root
+      apt:
+        update_cache: yes
+        name: software-properties-common
+        state: installed
+    - name: Install python-pexpect
+      become: yes
+      become_user: root
+      apt:
+        update_cache: yes
+        name: python-pexpect
+        state: installed
+    - name: Add certbot repo
+      shell: sudo add-apt-repository ppa:certbot/certbot
+    - name: Install certbot
+      become: yes
+      become_user: root
+      apt:
+        update_cache: yes
+        name: certbot
+        state: installed
+    - name: Obtain cert
+      shell: sudo certbot -n certonly --standalone -d `hostname -f` --agree-tos --email {{email}}
+    - name: Install docker
+      shell: curl -sSL https://get.docker.com/ | sh
+    - name: Install docker-compose
+      become: yes
+      become_user: root
+      shell: |
+        curl -sSL -L https://github.com/docker/compose/releases/download/1.14.0/docker-compose-`uname -s`-`uname -m` > /usr/local/bin/docker-compose
+        chmod +x /usr/local/bin/docker-compose
+    - name: Add onedata repo key
+      become: yes
+      become_user: root
+      apt_key:
+        url: https://packages.onedata.org/onedata.gpg.key
+        state: present
+    - name: Add onedata repo
+      become: yes
+      become_user: root
+      apt_repository: repo={{item}} state=present
+      with_items:
+        - deb [arch=amd64] https://packages.onedata.org/apt/ubuntu/xenial xenial main 
+        - deb-src [arch=amd64] https://packages.onedata.org/apt/ubuntu/xenial xenial main
+    - name: Install onedatify
+      become: yes
+      become_user: root
+      apt:
+        name: onedatify
+        state: present
+        allow_unauthenticated: yes
+        update_cache: yes
+    # - name: Prepare onedatify config
+    #   become: yes
+    #   become_user: root
+    #   #      debug: msg="TODO" # shell script
+    #   copy:
+    #     src: onedatify.config
+    #     dest: /opt/onedata/onedatify/config
+    # - name: Comment config line
+    #   become: yes
+    #   become_user: root
+    #   replace:
+    #     path: /usr/bin/onedatify
+    #     regexp: '^configure_onedatify '
+    #     replace: '#configure_onedatify '
+    #     backup: yes
+    - name: Comment otc dns
+      become: yes
+      become_user: root
+      replace:
+        path: /etc/resolv.conf
+        regexp: '^(nameserver 100)'
+        replace: '#\1'
+        backup: yes
+    # - name: Run onedatify
+    #   become: yes
+    #   become_user: root
+    #   shell: onedatify "{{onezone}}" "{{token}}"
+    - name: Run onedatify with expect
+      become: yes
+      become_user: root
+      expect:
+        timeout: 600
+        command: onedatify "{{onezone}}" "{{token}}"
+        echo: yes
+        responses:
+          'Do you want to continue \(y/n\)\?\:': 'y'
+          'Please enter the fully qualified domain name.*': "{{inventory_hostname}}.{{domain}}"
+          'Please enter the preety name of your oneprovider.*': "{{inventory_hostname}}"
+          'Absolute path where to keep oneprovider configuration and metadata.*': ""
+          'Please enter the latitude of your provider.*': ""
+          'Please enter the longitude of your provider.*': ""
+          'Please enter a path to a private key for domain.*': ""
+          'Please enter a path to a public certificate for domain.*': ""
+          'Please enter a path to a public certificate signing authority for domain.*': ""
+          'What storage type would you like to use\?.*': "posix"
+          'An absolute path to a directory you want to expose trough Onedata from POSIX storage.*': "/mnt/ceph"
+          'Expose storage as read only\?.*': "n"
+      register: cmd_output
+    - debug: msg="{{cmd_output.stdout}}"
+#    - debug: msg="{{cmd_output|to_nice_yaml}}"
+#    - debug: var="{{cmd_output}}"
+          
