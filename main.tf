@@ -149,7 +149,8 @@ resource "null_resource" "provision-mgt" {
       "sudo cp etc/ssh_config /etc/ssh/ssh_config",
       #      "ansible-playbook playbooks/otc/otc-snat-setup.yml",
       "ansible-playbook playbooks/myceph/myceph.yml --extra-vars \"osd_disks=${var.disks-per-osd_count} vol_prefix=${var.vol_prefix}\"",
-      "ansible-playbook playbooks/oneprovider.yml --extra-vars \"domain=${var.dnszone} email=${var.email} onezone=${var.onezone} token=${var.token}\"",
+      "ansible-playbook playbooks/oneprovider.yml --extra-vars \"domain=${var.dnszone} email=${var.email} onezone=${var.onezone} token=${var.token} storage_type=${var.storage_type}\"",
+      "ansible-playbook playbooks/oneclient.yml --extra-vars \"atoken=${var.atoken}\"",
 #      "ansible-playbook playbooks/ceph-ansible/site.yml",
     ]
   }

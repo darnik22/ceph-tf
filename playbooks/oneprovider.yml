@@ -1,5 +1,12 @@
 - hosts: ops
   tasks:
+    - name: Copy /etc/hosts
+      become: yes
+      become_user: root
+      copy:
+        src: /etc/hosts
+        dest:  /etc/hosts
+        mode: 0644
     - name: Set FQDN
       become: yes
       become_user: root
@@ -89,6 +96,25 @@
     #   become: yes
     #   become_user: root
     #   shell: onedatify "{{onezone}}" "{{token}}"
+    - name: Copy keyring
+      copy:
+        src: ~/ceph.client.admin.keyring
+        dest:  ~/ceph.client.admin.keyring
+        mode: 0600
+    - name: Get client.admin keyring
+      shell: tail -1 ~/ceph.client.admin.keyring | awk '{print $3}'
+      register: keyring
+#  - debug: msg={{keyring}}
+  # - name: Mount CephFS
+  #   become: yes
+  #   become_user: root
+  #   mount:
+  #     path: /mnt/ceph
+  #     fstype: ceph
+  #     src: "{{ groups['mons'][0] }}:6789:/"
+  #     opts: "name=admin,secret={{keyring.stdout}}"
+  #     state: mounted
+
     - name: Run onedatify with expect
       become: yes
       become_user: root
@@ -106,11 +132,21 @@
           'Please enter a path to a private key for domain.*': ""
           'Please enter a path to a public certificate for domain.*': ""
           'Please enter a path to a public certificate signing authority for domain.*': ""
-          'What storage type would you like to use\?.*': "posix"
+          'What storage type would you like to use\?.*': "{{storage_type}}"
+          'Please provide Ceph cluster name.*': "ceph"
+          'Please provider Ceph username.*': "client.admin"
+          'Please provider Ceph key.*': "{{keyring.stdout}}"
+          'Please provider hostname or IP of the Ceph monitor.*': "{{ groups['mons'][0] }}"
+          'Please provider name of the Ceph pool to use.*': "onedata"
+          'Does your Ceph server use https connection with a valid certificate\?.*': "n"
           'An absolute path to a directory you want to expose trough Onedata from POSIX storage.*': "/mnt/ceph"
           'Expose storage as read only\?.*': "n"
       register: cmd_output
     - debug: msg="{{cmd_output.stdout}}"
 #    - debug: msg="{{cmd_output|to_nice_yaml}}"
 #    - debug: var="{{cmd_output}}"
+    - local_action:
+        copy:
+          content: "{{cmd_output.stdout}}"
+          dest: onedatify.stdout
           

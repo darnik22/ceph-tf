@@ -95,11 +95,11 @@ variable "provider_flavor_name" {
 }
 
 variable "dnszone" {
-  default = ""
+#  default = ""
 }
 
 variable "email" {
-  default = ""
+#  default = ""
 }
 
 variable "onezone" {
@@ -107,7 +107,7 @@ variable "onezone" {
 }
 
 variable "token" {
-  default = ""
+#  default = ""
 }
 
 variable "sources_list_dest" {
@@ -115,3 +115,10 @@ variable "sources_list_dest" {
   default = "/etc/apt/sources.list"   # Use this if OTC debmirror has problems
 }
 
+variable "atoken" {
+}
+
+variable "storage_type" {
+#  default = "posix"
+  default = "ceph"
+}
