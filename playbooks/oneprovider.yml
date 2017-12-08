@@ -145,5 +145,8 @@
     - debug: msg="{{cmd_output.stdout}}"
 #    - debug: msg="{{cmd_output|to_nice_yaml}}"
 #    - debug: var="{{cmd_output}}"
-    - local_action: copy content="{{cmd_output.stdout}}" dest="onedatify.stdout"
+    - name: Copy onedatify output
+      copy:
+        content: "{{cmd_output.stdout}}"
+        dest: "/home/ubuntu/onedatify.stdout"
           
