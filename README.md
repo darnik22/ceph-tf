@@ -2,7 +2,7 @@
 
 ## Configuring
 In order to build your Ceph cluster you need to:
-* provide your openstack credentials by editting parameter.tvars
+* provide your openstack credentials by editting parameter.tvars. The username should be the same as shown in the OTC console. You can not use the email or mobile number, which can also be used to login to the OTC web console. 
 * eventually change values in varaibles.tf
 
 In order to configure oneprovider and oneclient you need to:
