@@ -237,10 +237,10 @@ resource "openstack_networking_subnet_v2" "subnet" {
 }
 
 provider "openstack" {
-  user_name   = "${var.username}"
-  password    = "${var.password}"
-  tenant_name = "${var.tenant_name}"
-  domain_name = "${var.domain_name}"
+  user_name   = "${var.otc_username}"
+  password    = "${var.otc_password}"
+  tenant_name = "${var.otc_tenant_name}"
+  domain_name = "${var.otc_domain_name}"
   auth_url    = "${var.endpoint}"
 }
 
