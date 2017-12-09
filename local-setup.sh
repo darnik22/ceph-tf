@@ -34,5 +34,12 @@ for ((i=1; i<=$provider_count; i++)) do
 done
 
 sed -e "s/PROJECT/${project}/g" etc/ssh_config.tpl > etc/ssh_config
+if [ ! -d keys ]; then 
+    mkdir keys
+fi
+if [ ! -f keys/id_rsa ]; then
+    ssh-keygen -f keys/id_rsa -N ""
+fi
+
 tar zchvf playbooks.tgz playbooks
 tar zcvf etc.tgz etc

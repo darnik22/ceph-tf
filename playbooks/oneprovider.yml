@@ -92,10 +92,6 @@
         regexp: '^(nameserver 100)'
         replace: '#\1'
         backup: yes
-    # - name: Run onedatify
-    #   become: yes
-    #   become_user: root
-    #   shell: onedatify "{{onezone}}" "{{token}}"
     - name: Copy keyring
       copy:
         src: ~/ceph.client.admin.keyring
@@ -120,7 +116,7 @@
       become_user: root
       expect:
         timeout: 600
-        command: onedatify "{{onezone}}" "{{token}}"
+        command: onedatify "{{onezone}}" "{{token}}" noimport
         echo: yes
         responses:
           'Do you want to continue \(y/n\)\?\:': 'y'
