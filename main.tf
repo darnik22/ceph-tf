@@ -225,7 +225,7 @@ resource "null_resource" "local-setup" {
 }
 
 resource "openstack_compute_keypair_v2" "otc" {
-  depends_on = ["null_resorce.local-setup"]
+  depends_on = ["null_resource.local-setup"]
   name       = "${var.project}-otc"
   public_key = "${file("${var.ssh_key_file}.pub")}"
 }
