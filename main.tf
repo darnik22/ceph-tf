@@ -105,9 +105,9 @@ resource "null_resource" "provision-mon" {
 
 resource "null_resource" "provision-mgt" {
   depends_on = ["openstack_networking_floatingip_v2.ceph-mgt","null_resource.provision-osd","null_resource.provision-mon","openstack_compute_volume_attach_v2.vas","openstack_dns_recordset_v2.recordset"]
-  provisioner "local-exec" {
-    command = "./local-setup.sh ${var.project} ${var.ceph-mon_count} ${var.ceph-osd_count} ${var.client_count} ${var.provider_count}"
-  }
+  # provisioner "local-exec" {
+  #   command = "./local-setup.sh ${var.project} ${var.ceph-mon_count} ${var.ceph-osd_count} ${var.client_count} ${var.provider_count}"
+  # }
   triggers {
     cluster_instance_ids = "${join(",", openstack_networking_floatingip_v2.ceph-mgt.*.address)}"
   }
@@ -218,7 +218,14 @@ resource "openstack_networking_port_v2" "mons-port" {
   }
 }
 
+resource "null_resource" "local-setup" {
+  provisioner "local-exec" {
+    command = "./local-setup.sh ${var.project} ${var.ceph-mon_count} ${var.ceph-osd_count} ${var.client_count} ${var.provider_count}"
+  }
+}
+
 resource "openstack_compute_keypair_v2" "otc" {
+  depends_on = ["null_resorce.local-setup"]
   name       = "${var.project}-otc"
   public_key = "${file("${var.ssh_key_file}.pub")}"
 }
