@@ -98,13 +98,13 @@
 - hosts: mgt
   tasks:
   - name: Create pool onedata
-    shell: sudo ceph osd pool create onedata 256
+    shell: sudo ceph osd pool create onedata 128
   - name: Deploy MDS
     shell: ceph-deploy mds create {{ groups['mons'][0] }}
   - name: Create pool cephfs_data
-    shell: sudo ceph osd pool create cephfs_data 256
+    shell: sudo ceph osd pool create cephfs_data 128
   - name: Create pool cephfs_metadata
-    shell: sudo ceph osd pool create cephfs_metadata 256
+    shell: sudo ceph osd pool create cephfs_metadata 128
   - name: Create cephfs
     shell: sudo ceph fs new cephfs cephfs_metadata cephfs_data
   - name: Crush tunables hammer
