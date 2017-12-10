@@ -39,5 +39,5 @@
         state: directory
         path: onedata
     - name: Mount onedata
-      shell: oneclient -H "{{groups['ops'][0]}}" -t "{{atoken}}" onedata 
+      shell: oneclient -H "{{groups['ops'][0]}}" -t "{{atoken}}" --force-proxy-io onedata 
 
