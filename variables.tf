@@ -149,8 +149,8 @@ variable "sources_list_dest" {
 }
 
 variable "storage_type" {
-#  default = "posix"
-  default = "ceph"
+  default = "posix"    # the data in the Ceph cluster are accessed via CephFS
+#  default = "ceph"    # the data in the Ceph cluster are accessed natively via rados
 }
 
 # The disk device naming (prefix) for the given flavor.
