@@ -32,7 +32,8 @@ variable "ssh_user_name" {
 }
 
 # Path to the ssh key. The key should not be password protected.
-# A new key pair will be generated if the given key does not exist.
+# The mkkeys.sh script can be used to generate the a new key pair if the directory
+# "keys" does not exist or is epmpty.
 # The key will be copied to the management node.
 variable "ssh_key_file" {
   default = "keys/id_rsa"

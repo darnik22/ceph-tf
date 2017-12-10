@@ -2,8 +2,9 @@
 
 ## Configuring
 In order to build your Ceph cluster you need to:
+* run mkkeys.sh from the main project directory. This will generate ssh key pair in the keys directory. They will further be used to login into the created VMs.
 * provide your openstack credentials by editting parameter.tvars. The username should be the same as shown in the OTC console. You can not use the email or mobile number, which can also be used to login to the OTC web console. 
-* eventually change values in varaibles.tf
+* eventually change values in varaibles.tf according to the comments in this file
 
 In order to configure oneprovider and oneclient you need to:
 * have a registered Internet domain which uses (delegates to) the following nameservers:
@@ -48,6 +49,7 @@ sudo ceph -s
 ```
 git clone https://github.com/darnik22/ceph-tf.git
 cd ceph-tf
+./mkkeys.sh
 vi parameter.tvars
 vi variables.tf
 terraform init
