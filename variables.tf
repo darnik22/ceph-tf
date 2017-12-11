@@ -149,8 +149,12 @@ variable "sources_list_dest" {
 }
 
 variable "storage_type" {
-  default = "posix"    # the data in the Ceph cluster are accessed via CephFS
-#  default = "ceph"    # the data in the Ceph cluster are accessed natively via rados
+#  default = "posix"    # the data in the Ceph cluster are accessed via CephFS
+  default = "ceph"    # the data in the Ceph cluster are accessed natively via rados
+}
+
+variable "oneclient_opts" {
+  default = "--force-direct-io"
 }
 
 # The disk device naming (prefix) for the given flavor.

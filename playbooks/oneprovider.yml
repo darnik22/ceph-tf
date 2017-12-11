@@ -110,7 +110,12 @@
   #     src: "{{ groups['mons'][0] }}:6789:/"
   #     opts: "name=admin,secret={{keyring.stdout}}"
   #     state: mounted
-
+    - name: Patch onedatify
+      become: yes
+      become_user: root
+      copy:
+        src: myonedatify
+        dest: /usr/bin/onedatify
     - name: Run onedatify with expect
       become: yes
       become_user: root

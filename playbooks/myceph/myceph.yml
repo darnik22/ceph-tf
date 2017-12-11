@@ -1,4 +1,4 @@
-- hosts: all
+- hosts: mgt mons osds ops
   become: yes
   become_user: root
   tasks:
@@ -72,7 +72,7 @@
         - osds
         - mons
         - mgt
-        - clients
+        - ops
     - name: Mgr create Ceph
       shell: ceph-deploy mgr create {{item}}
       with_inventory_hostnames:

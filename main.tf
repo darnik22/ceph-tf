@@ -150,7 +150,7 @@ resource "null_resource" "provision-mgt" {
       #      "ansible-playbook playbooks/otc/otc-snat-setup.yml",
       "ansible-playbook playbooks/myceph/myceph.yml --extra-vars \"osd_disks=${var.disks-per-osd_count} vol_prefix=${var.vol_prefix}\"",
       "ansible-playbook playbooks/oneprovider.yml --extra-vars \"domain=${var.dnszone} email=${var.email} onezone=${var.onezone} token=${var.support_token} storage_type=${var.storage_type}\"",
-      "ansible-playbook playbooks/oneclient.yml --extra-vars \"atoken=${var.access_token}\"",
+      "ansible-playbook playbooks/oneclient.yml --extra-vars \"atoken=${var.access_token} oneclient_opts=${var.oneclient_opts}\"",
 #      "ansible-playbook playbooks/ceph-ansible/site.yml",
     ]
   }
