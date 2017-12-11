@@ -1,0 +1,657 @@
+#!/bin/bash
+
+onedatify_config_dir="/opt/onedata/onedatify"
+config_file_path="${onedatify_config_dir}/config"
+example_config_file_path="${onedatify_config_dir}/config.example"
+onedatify_docker_compose_template_path="${onedatify_config_dir}/docker-compose.yml.template"
+onedatify_docker_compose_path="${onedatify_config_dir}/docker-compose.yml"
+local_copy_of_docker_compose_yaml=$(cat $onedatify_docker_compose_template_path)
+
+###############################################################
+# Utility functions that will be called only once, script wide
+###############################################################
+get_sh() {
+  user="$(id -un 2>/dev/null || true)"
+  sh_c='sh -c'
+  if [ "$user" != 'root' ]; then
+    if command_exists sudo; then
+      sh_c='sudo -E sh -c'
+    elif command_exists su; then
+      sh_c='su -c'
+    else
+cat >&2 <<EOF
+Error: this installer needs the ability to run commands as root.
+We are unable to find either "sudo" or "su" available to make this happen.
+EOF
+exit 1
+    fi
+  fi
+}
+# Global shell variable used by all functions
+get_sh #1>/dev/null
+
+#######################################
+# Utility logging and colour functions
+#######################################
+colors() {
+  if [ -t 1 ] ; then
+    def_color=$(tput sgr0 || tput me )
+    red=$(tput setaf 1; tput bold || tput md)
+    green=$(tput setaf 2;tput bold || tput md)
+    yellow=$(tput setaf 3; tput bold || tput md)
+    blue=$(tput setaf 4; tput bold || tput md)
+    magneta=$(tput setaf 5; tput bold || tput md)
+    cyan=$(tput setaf 6; tput bold || tput md)
+    grey=$(tput setaf 7;)
+    grey_bold=$(tput setaf 7 ; tput bold || tput md )
+  else
+    def_color=''
+    red=''
+    green=''
+    yellow=''
+    blue=''
+    magneta=''
+    cyan=''
+    grey=''
+    grey_bold=''
+  fi
+}
+colors #1>/dev/null
+
+log() {
+  printf "$1$2$3$def_color\n" >&2
+}
+_log() {
+  printf "$1$2$3$def_color" >&2
+}
+
+message() {
+  log "$grey_bold" "" "$@"
+}
+message_imp() {
+  log "$red" "" "$@"
+}
+
+_message_imp() {
+  _log "$red" "" "$@"
+}
+_message() {
+  _log "$grey_bold" "" "$@"
+}
+
+command_exists() {
+  command -v "$@" > /dev/null 2>&1
+}
+
+################
+# Usage message
+################
+usage() {
+cat <<EOF
+This script requirers two arguments:
+
+${0##*/} <onezone_url> <space_support_token>
+
+Example:
+${0##*/} 'https://onedata.org' 'MDAxNWxvY2F00aW9uIG9u...'
+
+EOF
+exit 1
+}
+
+##########################
+# Configuration bootstrap
+##########################
+configure_onedatify() {
+
+  onezone_url="$1"
+  space_support_token="$2"
+  force_import="$3"
+
+  if [ "$onezone_url" = "" ] ; then
+    usage
+  fi
+
+  if [ "$space_support_token" = "" ] ; then
+    usage
+  fi
+
+  curl=''
+  if command_exists curl; then
+    curl='curl -sSL'
+  elif command_exists wget; then
+    curl='wget -qO-'
+  fi
+  
+  if [ -f "$config_file_path" ] ; then
+    
+    # Read current defaults
+    . "$config_file_path"
+    message "We detected old configuration:"
+    message "###############################"
+    $sh_c "cat $config_file_path"
+    message "\n###############################"
+    message ""
+    clean=""
+    while [ "$clean" != "n" ] && [ "$clean" != "y" ] ; do
+      message_imp "We detected existing onedata configuration on your machine."
+      message_imp "Would you like to keep it or remove it and start a clean installation?"
+      message_imp "WARNING: this process will delete all the onedata configuration you had!"
+      _message "Do you want to continue (y/n)?: "
+      read clean </dev/tty
+    done
+    if [ "$clean" = "y" ]; then
+        message "Stopping oneprovider docker container..."
+        $sh_c "systemctl -q is-active onedatify.service >/dev/null && systemctl stop onedatify.service"
+        message "Removing oneprovider configuration directory..."
+        $sh_c "rm -rf $oneprovider_persistance_volume"
+        $sh_c "cp $example_config_file_path $config_file_path"
+    else
+        return 0
+    fi
+  else
+    $sh_c "cp $example_config_file_path $config_file_path"
+    . "$config_file_path"
+  fi
+
+  ######
+  # Onezone url and spacke support token given as arguments
+  ######
+  zone_fqdn=${1##https://}
+  space_token=$2
+
+  ######
+  # Ask for provider FQDN
+  ######
+  #provider_fqdn=$($sh_c "$curl http://ipinfo.io/ip")
+  if [ "$provider_fqdn" = "" ] ; then
+    provider_fqdn_default=$($sh_c "hostname -f")
+  else
+    provider_fqdn_default=$provider_fqdn
+  fi
+  _message "Please enter the fully qualified domain name (FQDN) of you oneprovider (auto-detected default: $provider_fqdn_default): "
+  read -r provider_fqdn </dev/tty
+  [  "$provider_fqdn" = "" ] && provider_fqdn=$provider_fqdn_default
+
+  #####
+  # Ask for preety provider name
+  #####
+  if [ "$oneprovider_name" = "" ] ; then
+    oneprovider_name_default=$($sh_c "hostname")
+  else
+    oneprovider_name_default=$oneprovider_name
+  fi
+  _message "Please enter the preety name of your oneprovider (default: $oneprovider_name_default): "
+  read -r oneprovider_name </dev/tty
+  [  "$oneprovider_name" = "" ] && oneprovider_name=$oneprovider_name_default
+
+  hostname=$(echo "$provider_fqdn" | cut -d '.' -f 1)
+  domain_name=$(echo "$provider_fqdn" | cut -d '.' -f 2-)
+
+  ######
+  # Ask for a directory to store provider config and metadata
+  ######
+  if [ "$oneprovider_persistance_volume" = "" ] ; then
+    oneprovider_persistance_volume_defualt=$onedatify_config_dir/oneprovider_conf
+  else
+    oneprovider_persistance_volume_defualt=$oneprovider_persistance_volume
+  fi
+  _message "Absolute path where to keep oneprovider configuration and metadata (default: $oneprovider_persistance_volume_defualt): "
+  read -r oneprovider_persistance_volume </dev/tty
+  [  "$oneprovider_persistance_volume" = "" ] && oneprovider_persistance_volume=$oneprovider_persistance_volume_defualt
+
+  ######
+  # Ask for coordinates
+  ######
+  coordinates=$($sh_c "$curl freegeoip.net/xml/$provider_fqdn | grep -E \"Latitude|Longitude\" | cut -d '>' -f 2 | cut -d '<' -f 1 | tr '\n' ' '")
+  
+  [ "$geo_latitude" = "" ] && geo_latitude=$(echo $coordinates | cut -d " " -f 1)
+  [ "$geo_longitude" = "" ] && geo_longitude=$(echo $coordinates | cut -d " " -f 2)
+
+  geo_latitude_default=$geo_latitude
+  while [ 1 ]; do
+    _message "Please enter the latitude of your provider (auto-detected default: $geo_latitude_default): "
+    read -r geo_latitude </dev/tty
+    if [ "$geo_latitude" =  "" ]; then
+      geo_latitude=$geo_latitude_default
+    fi
+    result=$(expr "$geo_latitude" : '^[-0-9]*[0-9][0-9]*\.\?[0-9]\?[0-9]*$')
+    if [ "$result" != "0" ] && [ "$result" != "" ] ; then
+      break 
+    else 
+      message_imp "The format of the coordinates needs to mach the regualr expression '[-0-9]*[0-9][0-9]*.[0-9][0-9]*'. Please try again."
+    fi
+  done
+
+  geo_longitude_default=$geo_longitude
+  while [ 1 ]; do
+    _message "Please enter the longitude of your provider (auto-detected default: $geo_longitude_default): "
+    read -r geo_longitude </dev/tty
+    if [ "$geo_longitude" =  "" ]; then
+      geo_longitude=$geo_longitude_default
+    fi
+    result=$(expr "$geo_longitude" : '^[-0-9]*[0-9][0-9]*\.\?[0-9]\?[0-9]*$')
+    if [ "$result" != "0" ] && [ "$result" != "" ] ; then
+      break 
+    else 
+      message_imp "The format of the coordinates needs to mach the regualr expression '[-0-9]*[0-9][0-9]*.[0-9][0-9]*'. Please try again."
+    fi
+  done
+
+  ######
+  # Ask for certs
+  ######
+  letsencrypt_prefix="/etc/letsencrypt/live/$provider_fqdn"
+
+  key_defualt=$key
+  [ "$key_defualt" = "" ] && [ -f "$letsencrypt_prefix/privkey.pem" ] && key_defualt="$letsencrypt_prefix/privkey.pem"
+  key=""
+  key_path_extist=1
+  while [ 1 ] ; do
+    _message "Please enter a path to a private key for domain $provider_fqdn (default: $key_defualt): "
+    read -r key </dev/tty
+    [ "$key" = "" ] && key=$key_defualt
+    if [ -f "$key" ] ; then
+      break
+    else
+      message_imp "There is no file under the path you provided, please try again."
+    fi
+  done
+
+  cert_defualt=$cert
+  [ "$cert_defualt" = "" ] && [ -f "$letsencrypt_prefix/cert.pem" ] && cert_defualt="$letsencrypt_prefix/cert.pem"
+  cert=""
+  cert_path_extist=1
+  while [ 1 ] ; do
+    _message "Please enter a path to a public certificate for domain $provider_fqdn (default: $cert_defualt): "
+    read -r cert </dev/tty
+    [ "$cert" = "" ] && cert=$cert_defualt
+    if [ -f "$cert" ] ; then
+      break
+    else
+      message_imp "There is no file under the path you provided, please try again."
+    fi
+  done
+
+  cacert_defualt=$cacert
+  [ "$cacert_defualt" = "" ] && [ -f "$letsencrypt_prefix/chain.pem" ] && cacert_defualt="$letsencrypt_prefix/chain.pem"
+  cacert=""
+  cacert_path_extist=1
+  while [ 1 ] ; do
+    _message "Please enter a path to a public certificate signing authority for domain $provider_fqdn (default: $cacert_defualt): "
+    read -r cacert </dev/tty
+    [ "$cacert" = "" ] && cacert=$cacert_defualt
+    if [ -f "$cacert" ] ; then
+      break
+    else
+      message_imp "There is no file under the path you provided, please try again."
+    fi
+  done
+
+  # There are two usecases of this script:
+  # 1. setting up a provider backed by a storage 
+  # 2. exposing data on that storage
+  # all this needs to handle different types of storages
+
+  ######
+  # Ask for storage type
+  ######
+  storage_type_default=$storage_type
+  storage_type=""
+  while [ 1 ] ; do
+    _message "What storage type would you like to use? (default: $storage_type_default, possible options: posix | s3 | ceph | glusterfs | swift ): "
+    read -r storage_type </dev/tty
+    [ "$storage_type" = "" ] && storage_type=$storage_type_default
+    case "$storage_type" in
+      posix|s3|ceph|glusterfs|swift)
+          break
+          ;;
+      *)
+        message_imp "Possible stoarge types are: posix | s3 | ceph | glusterfs | swift."
+    esac
+  done
+
+  ####
+  # Storage name to show in GUI
+  ###$
+  storage_name=onedatify
+
+  ######
+  # Ask user for input and validate it's not empty
+  ######
+  ask_for_nonepty_string() {
+    current_value="$1"
+    qestion="$2"
+
+    default_value="$current_value"
+    current_value=""
+    while true ; do
+      _message "$qestion"
+      read -r current_value </dev/tty
+      [  "$current_value" = "" ] && current_value="$default_value"
+      [  "$current_value" != "" ] && break
+    done
+    echo "$current_value"
+  }
+  
+  case "$storage_type" in
+    posix)
+      ######
+      # Ask which directory to expose
+      ######   
+      onedatify_dir_default=$onedatify_dir
+      onedatify_dir=""
+      while [ 1 ] ; do
+        _message "An absolute path to a directory you want to expose trough Onedata from POSIX storage (default: $onedatify_dir_default): " 
+        read -r onedatify_dir </dev/tty
+        [ "$onedatify_dir" = "" ] && onedatify_dir=$onedatify_dir_default
+        if [ -d "$onedatify_dir" ] ; then
+          onedatify_dir_prefix=$(echo "$onedatify_dir" | head -c 1)
+          if [ "$onedatify_dir_prefix" = "/" ] ; then
+            break
+          else
+            message_imp "The path you provided is not an absolute path."
+          fi
+        else
+          message_imp "There path that you specified is not a directory or does not exist."
+        fi
+      done
+      # Has to be the same as a volume mounted in the container 
+      posix_mountPoint="$onedatify_dir"
+
+      local_copy_of_docker_compose_yaml=$(echo "$local_copy_of_docker_compose_yaml" | sed  -e "s#storages:#storages:\n\
+            \$storage_name:\n\
+              type: \$storage_type\n\
+              mountPoint: /onedatify\$posix_mountPoint\n\
+              readonly: \$read_only#")
+
+      #####
+      # Detect capacity of a storage where onedatify_dir resides
+      ####
+      onedatify_dir_capacity=$($sh_c "df -B 1 --output=size $onedatify_dir | tail -n+2 ")
+      if [ "$onedatify_dir_capacity" = "" ] ; then
+        onedatify_dir_capacity=1000000000
+      fi
+      ;;
+    s3)
+      s3_hostname=$(ask_for_nonepty_string "$s3_hostname" "Please provide an IP or hostname of a S3 server (default: $s3_hostname): ")
+      s3_bucketName=$(ask_for_nonepty_string "$s3_bucketName" "Please provide a name of a S3 bucket (default: $s3_bucketName): ")
+      s3_accessKey=$(ask_for_nonepty_string "$s3_accessKey" "Please provide an accessKey for the S3 server (default: $s3_accessKey): ")
+      s3_secretKey=$(ask_for_nonepty_string "$s3_secretKey" "Please provide an secretKey for the S3 server (default: $s3_secretKey): ")
+
+      if [ "$s3_insecure" = "true" ]; then
+          s3_insecure_default=n
+      else
+          s3_insecure_default=y
+      fi
+      s3_insecure=""
+      while [ "$s3_insecure" != "n" ] && [ "$s3_insecure" != "y" ] ; do
+        _message "Does your S3 server use https connection with a valid certificate? (y/n, default: $s3_insecure_default): "
+        read -r s3_insecure </dev/tty
+        [  "$s3_insecure" = "" ] && s3_insecure=$s3_insecure_default
+      done
+      if [ "$s3_insecure" = "n" ]; then
+          s3_insecure=true
+      else
+          s3_insecure=false
+      fi
+
+
+      # The length of the indentations bellow is important!
+      local_copy_of_docker_compose_yaml=$(echo "$local_copy_of_docker_compose_yaml" | sed  -e "s#storages:#storages:\n\
+            \$storage_name:\n\
+              type: \$storage_type\n\
+              hostname: \$s3_hostname\n\
+              bucketName: \$s3_bucketName\n\
+              accessKey: \$s3_accessKey\n\
+              secretKey: \$s3_secretKey\n\
+              insecure: \$s3_insecure\n\
+              readonly: \$read_only#")
+
+      #####
+      # Detect s3 capacity
+      ####
+      s3_capacity=1000000000
+      onedatify_dir_capacity=$s3_capacity
+      ;;
+    ceph)
+      ceph_clusterName=$(ask_for_nonepty_string "$ceph_clusterName" "Please provide Ceph cluster name (default: $ceph_clusterName): ")
+      ceph_username=$(ask_for_nonepty_string "$ceph_username" "Please provider Ceph username (default: $ceph_username): ")
+      ceph_key=$(ask_for_nonepty_string "$ceph_key" "Please provider Ceph key (default: $ceph_key): ")
+      ceph_monitorHostname=$(ask_for_nonepty_string "$ceph_monitorHostname" "Please provider hostname or IP of the Ceph monitor (default: $ceph_monitorHostname): ")
+      ceph_poolName=$(ask_for_nonepty_string "$ceph_poolName" "Please provider name of the Ceph pool to use (default: $ceph_poolName): ")
+ 
+      if [ "$ceph_insecure" = "true" ]; then
+          ceph_insecure_default=n
+      else
+          ceph_insecure_default=y
+      fi
+      ceph_insecure=""
+      while [ "$ceph_insecure" != "n" ] && [ "$ceph_insecure" != "y" ] ; do
+        _message "Does your Ceph server use https connection with a valid certificate? (y/n, default: $ceph_insecure_default): "
+        read -r ceph_insecure </dev/tty
+        [  "$ceph_insecure" = "" ] && ceph_insecure=$ceph_insecure_default
+      done
+      if [ "$ceph_insecure" = "n" ]; then
+          ceph_insecure=true
+      else
+          ceph_insecure=false
+      fi
+
+      # The length of the indentations bellow is important!
+      local_copy_of_docker_compose_yaml=$(echo "$local_copy_of_docker_compose_yaml" | sed  -e "s#storages:#storages:\n\
+            \$storage_name:\n\
+              type: \$storage_type\n\
+              clusterName: \$ceph_clusterName\n\
+              username: \$ceph_username\n\
+              key: \$ceph_key\n\
+              monitorHostname: \$ceph_monitorHostname\n\
+              poolName: \$ceph_poolName\n\
+              insecure: \$ceph_insecure\n\
+              readonly: \$read_only#")
+
+      #####
+      # Detect ceph capacity
+      ####
+      a=`sudo ceph df 2>/dev/null | grep $ceph_poolName | awk '{print $5}' | sed 's/G//'`
+      if [[ $a =~ ^[0-9]+$ ]]; then 
+        ceph_capacity=$(( $a*1024*1024*1024 ))
+      else
+        ceph_capacity=100000000
+      fi
+      onedatify_dir_capacity=$ceph_capacity
+      ;;
+    glusterfs)
+      gluster_hostname=$(ask_for_nonepty_string "$gluster_hostname" "Please provide an IP or hostname of a GlusterFS server (default: $gluster_hostname): ")
+      gluster_volume=$(ask_for_nonepty_string "$gluster_volume" "Please provide a name of a GlusterFS volume (default: $gluster_volume): ")
+      gluster_transport=$(ask_for_nonepty_string "$gluster_transport" "Does your GlusterFS use TCP or UDP? (valid answers: tcp/udp, default: $gluster_transport): ")
+ 
+      
+      if [ "$gluster_insecure" = "true" ]; then
+          gluster_insecure_default=n
+      else
+          gluster_insecure_default=y
+      fi
+      gluster_insecure=""
+      while [ "$gluster_insecure" != "n" ] && [ "$gluster_insecure" != "y" ] ; do
+        _message "Does your GlusterFS server use https connection with a valid certificate?: (y/n, default: $gluster_insecure_default): "
+        read -r gluster_insecure </dev/tty
+        [  "$gluster_insecure" = "" ] && gluster_insecure=$gluster_insecure_default
+      done
+      if [ "$gluster_insecure" = "n" ]; then
+          gluster_insecure=true
+      else
+          gluster_insecure=false
+      fi
+
+      # The length of the indentations bellow is important!
+      local_copy_of_docker_compose_yaml=$(echo "$local_copy_of_docker_compose_yaml" | sed  -e "s#storages:#storages:\n\
+            \$storage_name:\n\
+              type: \$storage_type\n\
+              hostname: \$gluster_hostname\n\
+              volume: \$gluster_volume\n\
+              transport: \$gluster_transport\n\
+              insecure: \$gluster_insecure\n\
+              readonly: \$read_only#")
+
+      #####
+      # Detect gluster capacity
+      ####
+      gluster_capacity=1000000000
+      onedatify_dir_capacity=$gluster_capacity
+      ;;
+    swift)
+      message_imp "Apiologies, onedatify script does not support Swift at the moment."
+      exit 1
+      ;;
+  esac
+
+
+  if [ "$force_import" = "0" ] ; then
+    import_enabled=0
+  else
+    import_enabled=1
+  fi
+
+  # ######
+  # # Should the data on this storage be imported ?  
+  # ######
+  # import_enabled=$import_enabled
+  # if [ $import_enabled -eq 1 ]; then
+  #     import_enabled_default=y
+  # else
+  #     import_enabled_default=n
+  # fi
+  # while [ "$import_enabled" != "n" ] && [ "$import_enabled" != "y" ] ; do
+  #   _message "Do you want to import existing data from that storage? (y/n, default: $import_enabled_default): "
+  #   read -r import_enabled </dev/tty
+  #   [  "$import_enabled" = "" ] && import_enabled=$import_enabled_default
+  # done
+  # if [ "$import_enabled" = "y" ]; then
+  #     import_enabled=1
+  # else
+  #     import_enabled=0
+  # fi
+
+  ######
+  # Should storage that supports a space should be the space's root,
+  # or should there is a dedicated <space_id> folder created for the space
+  # on the storage.
+  ######
+  # if import enabled we want thsi to be true always
+  mount_in_root=false
+  if [ $import_enabled -eq 1 ]; then
+    mount_in_root=true
+  fi
+
+  if [ $import_enabled -eq 1 ]; then
+  ######
+  # Should this storage be set as read only when exposed?   
+  ######
+    if [ "$read_only" = "true" ]; then
+        read_only_default=y
+    else
+        read_only_default=n
+    fi
+    read_only=""
+    while [ "$read_only" != "n" ] && [ "$read_only" != "y" ] ; do
+      _message "Expose storage as read only? (y/n, default: $read_only_default): "
+      read -r read_only </dev/tty
+      [  "$read_only" = "" ] && read_only=$read_only_default
+    done
+    if [ "$read_only" = "y" ]; then
+        read_only=true
+    else
+        read_only=false
+    fi
+  else
+    read_only=false
+  fi
+  
+  ######
+  # Create customized docker-compose file
+  ######
+  echo -n "$local_copy_of_docker_compose_yaml" > $onedatify_docker_compose_path
+
+  ######
+  # Generate password for administrator user
+  ######
+  admin_password=$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 13)
+
+  ######
+  # Save all gathered values to config file
+  ######  
+  $sh_c "printf '\n' >> $config_file_path"
+  # Write values back to config file
+  for var in oneprovider_name provider_fqdn oneprovider_persistance_volume hostname domain_name key cert cacert geo_latitude geo_longitude zone_fqdn onedatify_dir read_only admin_password \
+             storage_type storage_name import_enabled \
+             posix_mountPoint \
+             s3_hostname s3_bucketName s3_accessKey s3_secretKey s3_insecure \
+             ceph_username ceph_key ceph_monitorHostname ceph_clusterName ceph_poolName ceph_insecure\
+             gluster_hostname gluster_volume gluster_transport gluster_insecure; do
+    $sh_c "sed -i \"/\($var\)=.*/d\" $config_file_path"
+    eval tmp="\$$var"
+    $sh_c "printf '%s=%s\n' $var $tmp" >> "$config_file_path"
+  done
+}
+
+run_onedatify() {
+  space_token=$1
+  admin_password=$2
+  force_import=$3
+  
+  # Start in background
+  $sh_c "systemctl enable onedatify.service"
+  $sh_c "systemctl start onedatify.service"
+  
+  # Wait for ready
+  user=""
+  message "Installation is about to start, you can observe detailed logs by executing following command in a second window:"
+  message "journalctl -u onedatify.service -f"
+  message ""
+  _message "Waiting for oneprovider to start"
+  match="0"
+  while [ "$user" = "" ] || [ "$match" != 0 ] ; do
+    printf "."
+    if command_exists curl; then
+      user="$(curl -k -u admin:$admin_password -sS --tlsv1.2 -X GET  'https://localhost:9443/api/v3/onepanel/users/admin' 2>/dev/null )"
+    elif command_exists wget; then
+      user="$(wget -qO- --no-check-certificate --auth-no-challenge --user=admin --password=$admin_password 'https://localhost:9443/api/v3/onepanel/users/admin')"
+    fi
+    match=$(expr "$user" : '.*Authentication Error.*')
+    # $sh_c "systemctl -q is-active onedatify.service >/dev/null && systemctl stop onedatify.service"
+    sleep 5
+  done
+  printf "\n\n"
+
+  if [ $import_enabled -eq 1 ]; then
+    # Support and expose!
+    docker run \
+    -e TERM=xterm \
+    -e ONEPANEL_HOST=https://$provider_fqdn:9443 \
+    -e ONEPROVIDER_HOST=https://$provider_fqdn \
+    -e ONEPANEL_BASIC_AUTH=admin:$admin_password \
+    -e SPACE_TOKEN=$space_token \
+    -e STORAGE_TO_EXPOSE_NAME=$storage_name \
+    -e SUPPORT_SIZE=$onedatify_dir_capacity \
+    -e ONEZONE_FQDN=$onezone_url \
+    -e MOUNT_IN_ROOT=$mount_in_root \
+    -v $onedatify_config_dir/support_and_expose.sh:/support_and_expose.sh --rm onedata/rest-cli:3.0.0-rc16 -c /support_and_expose.sh
+  else
+    # Support only!
+    docker run \
+    -e TERM=xterm \
+    -e ONEPANEL_HOST=https://$provider_fqdn:9443 \
+    -e ONEPROVIDER_HOST=https://$provider_fqdn \
+    -e ONEPANEL_BASIC_AUTH=admin:$admin_password \
+    -e SPACE_TOKEN=$space_token \
+    -e STORAGE_TO_EXPOSE_NAME=$storage_name \
+    -e SUPPORT_SIZE=$onedatify_dir_capacity \
+    -e ONEZONE_FQDN=$onezone_url \
+    -e MOUNT_IN_ROOT=$mount_in_root \
+    -v $onedatify_config_dir/support.sh:/support.sh --rm onedata/rest-cli:3.0.0-rc16 -c /support.sh
+  fi
+}
+
+configure_onedatify "$1" "$2" "$3"
+run_onedatify "$space_token" "$admin_password"
