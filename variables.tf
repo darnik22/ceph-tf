@@ -143,6 +143,10 @@ variable "ssh_key_file" {
   default = "keys/id_rsa"
 }
 
+variable "public_key_file" {
+  default = "~/.ssh/id_rsa.pub"
+}
+
 variable "sources_list_dest" {
 #  default = "/dev/null"
   default = "/etc/apt/sources.list"   # Use this if OTC debmirror has problems
