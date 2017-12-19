@@ -2,9 +2,9 @@
 
 ## Configuring
 In order to build your Ceph cluster you need to:
-* run mkkeys.sh from the main project directory. This will generate ssh key pair in the keys directory. They will further be used to login into the created VMs.
+* run ssh-agent and add your key. It will further be used to login into the created VMs.
 * provide your openstack credentials by editting parameter.tvars. The username should be the same as shown in the OTC console. You can not use the email or mobile number, which can also be used to login to the OTC web console. 
-* eventually change values in varaibles.tf according to the comments in this file
+* eventually change values in varaibles.tf according to the comments in this file.
 
 In order to configure oneprovider and oneclient you need to:
 * have a registered Internet domain which uses (delegates to) the following nameservers:
@@ -32,12 +32,12 @@ Build your Ceph cluster issuing:
 terraform init
 terraform apply -var-file parameter.tvars
 ```
-The oneprovider credentials are displayed in green somewhere in the ugly output of terraform/ansible. The same output is stored in ~/onedatify.stdout on the oneprovider node. The ssh keys are generated and placed in the keys directory. They are also copied to the management node.
+The oneprovider credentials are displayed in green somewhere in the ugly output of terraform/ansible. The same output is stored in ~/onedatify.stdout on the oneprovider node. 
 
 ## Accessing your Ceph cluster
 After a successful built the public IP of the cluster management node is displayed. Use it to login:
 ```
-ssh -i keys/id_rsa ubuntu@THE_IP
+ssh -A ubuntu@THE_IP
 ```
 
 Check that Ceph is running:
@@ -47,14 +47,15 @@ sudo ceph -s
 
 ## Example command flow
 ```
+eval `ssh-agent`
+ssh-key
 git clone https://github.com/darnik22/ceph-tf.git
 cd ceph-tf
-./mkkeys.sh
 vi parameter.tvars
 vi variables.tf
 terraform init
 terraform apply -var-file parameter.tvars
-ssh -i keys/id_rsa ubuntu@THE_IP_OF_MGT_NODE
+ssh -A ubuntu@THE_IP_OF_MGT_NODE
 sudo ceph -s
 ssh ${project}-client-01
 cd onedata/YOUR_SPACE

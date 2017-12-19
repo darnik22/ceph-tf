@@ -5,12 +5,12 @@ resource "openstack_networking_floatingip_v2" "ceph-mgt" {
   pool  = "${var.external_network}"
 }
 
-resource "openstack_networking_floatingip_v2" "ceph-osds" {
-  depends_on = ["openstack_compute_instance_v2.ceph-osds"]
-  port_id  = "${element(openstack_networking_port_v2.osds-port.*.id, count.index)}"
-  count = "${var.ceph-osd_count}"
-  pool  = "${var.external_network}"
-}
+# resource "openstack_networking_floatingip_v2" "ceph-osds" {
+#   depends_on = ["openstack_compute_instance_v2.ceph-osds"]
+#   port_id  = "${element(openstack_networking_port_v2.osds-port.*.id, count.index)}"
+#   count = "${var.ceph-osd_count}"
+#   pool  = "${var.external_network}"
+# }
 
 resource "openstack_networking_floatingip_v2" "ceph-mons" {
   depends_on = ["openstack_compute_instance_v2.ceph-mons"]
@@ -53,11 +53,13 @@ resource "openstack_networking_port_v2" "mgt-port" {
 
 resource "null_resource" "provision-osd" {
   count = "${var.ceph-osd_count}"
-  depends_on = ["openstack_networking_floatingip_v2.ceph-osds"]
+#  depends_on = ["openstack_networking_floatingip_v2.ceph-osds"]
   connection {
-    host     = "${element(openstack_networking_floatingip_v2.ceph-osds.*.address, count.index)}"
+    bastion_host = "${openstack_networking_floatingip_v2.ceph-mgt.0.address}"
+    host     = "${element(openstack_compute_instance_v2.ceph-osds.*.access_ip_v4, count.index)}"
     user     = "${var.ssh_user_name}"
-    private_key = "${file(var.ssh_key_file)}"
+    #    private_key = "${file(var.ssh_key_file)}"
+    agent = true
     timeout = "120s"
   }
   provisioner "file" {
@@ -88,7 +90,8 @@ resource "null_resource" "provision-mon" {
   connection {
     host     = "${element(openstack_networking_floatingip_v2.ceph-mons.*.address, count.index)}"
     user     = "${var.ssh_user_name}"
-    private_key = "${file(var.ssh_key_file)}"
+    #    private_key = "${file(var.ssh_key_file)}"
+    agent = true
   }
   provisioner "file" {
     source = "etc/sources.list"
@@ -114,12 +117,13 @@ resource "null_resource" "provision-mgt" {
   connection {
       host     = "${openstack_networking_floatingip_v2.ceph-mgt.address}"
       user     = "${var.ssh_user_name}"
-      private_key = "${file(var.ssh_key_file)}"
+    #      private_key = "${file(var.ssh_key_file)}"
+      agent = true
   }
-  provisioner "file" {
-    source = "${dirname(var.ssh_key_file)}/"
-    destination = "~/.ssh"
-  }  
+  # provisioner "file" {
+  #   source = "${dirname(var.ssh_key_file)}/"
+  #   destination = "~/.ssh"
+  # }  
   provisioner "file" {
     source = "playbooks.tgz"
     destination = "playbooks.tgz"
@@ -227,7 +231,8 @@ resource "null_resource" "local-setup" {
 resource "openstack_compute_keypair_v2" "otc" {
   depends_on = ["null_resource.local-setup"]
   name       = "${var.project}-otc"
-  public_key = "${file("${var.ssh_key_file}.pub")}"
+  #  public_key = "${file("${var.ssh_key_file}.pub")}"
+  public_key = "${file("${var.public_key_file}")}"
 }
 
 resource "openstack_networking_network_v2" "network" {
@@ -256,6 +261,7 @@ resource "openstack_networking_router_v2" "router" {
   admin_state_up   = "true"
   #external_gateway = "${data.openstack_networking_network_v2.external_network.id}"
   external_gateway = "0a2228f2-7f8a-45f1-8e09-9039e1d09975"
+  enable_snat = true
 }
 
 resource "openstack_networking_router_interface_v2" "interface" {

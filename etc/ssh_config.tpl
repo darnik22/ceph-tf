@@ -12,3 +12,4 @@ Host !PROJECT-*
 Host PROJECT-*
         StrictHostKeyChecking no
         VerifyHostKeyDNS no
+        ForwardAgent yes

@@ -11,7 +11,8 @@ resource "null_resource" "provision-client" {
   connection {
     host     = "${element(openstack_networking_floatingip_v2.clients.*.address, count.index)}"
     user     = "${var.ssh_user_name}"
-    private_key = "${file(var.ssh_key_file)}"
+    #    private_key = "${file(var.ssh_key_file)}"
+    agent = true
     timeout = "120s"
   }
   provisioner "file" {

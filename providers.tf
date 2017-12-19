@@ -11,7 +11,8 @@ resource "null_resource" "provision-provider" {
   connection {
     host     = "${element(openstack_networking_floatingip_v2.providers.*.address, count.index)}"
     user     = "${var.ssh_user_name}"
-    private_key = "${file(var.ssh_key_file)}"
+    #    private_key = "${file(var.ssh_key_file)}"
+    agent = true
     timeout = "120s"
   }
   provisioner "file" {

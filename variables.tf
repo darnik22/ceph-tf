@@ -139,12 +139,12 @@ variable "ssh_user_name" {
 # The mkkeys.sh script can be used to generate the a new key pair if the directory
 # "keys" does not exist or is epmpty.
 # The key will be copied to the management node.
-variable "ssh_key_file" {
-  default = "keys/id_rsa"
-}
+# variable "ssh_key_file" {
+#   default = "keys/id_rsa"
+# }
 
 variable "public_key_file" {
-  default = "~/.ssh/id_rsa.pub"
+  default = "/home/ubuntu/.ssh/id_rsa.pub"
 }
 
 variable "sources_list_dest" {
