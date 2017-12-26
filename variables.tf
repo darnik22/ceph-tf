@@ -70,7 +70,8 @@ variable "flavor_name" {
 
 # The image name used for all instances
 variable "image_name" {
-  default = "Community_Ubuntu_16.04_TSI_latest"
+#  default = "Community_Ubuntu_16.04_TSI_latest"
+  default = "Community_Ubuntu_16.04_TSI_20171116_0"
 }
 
 # Availability zone 

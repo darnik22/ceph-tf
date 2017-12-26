@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 onedatify_config_dir="/opt/onedata/onedatify"
 config_file_path="${onedatify_config_dir}/config"
@@ -454,10 +454,11 @@ configure_onedatify() {
       # Detect ceph capacity
       ####
       a=`sudo ceph df 2>/dev/null | grep $ceph_poolName | awk '{print $5}' | sed 's/G//'`
-      if [[ $a =~ ^[0-9]+$ ]]; then 
+      result=$(expr "$a" : '^[0-9][0-9]*$')
+      if [ "$result" != "0" ] && [ "$result" != "" ] ; then     
         ceph_capacity=$(( $a*1024*1024*1024 ))
       else
-        ceph_capacity=100000000
+        ceph_capacity=1000000000
       fi
       onedatify_dir_capacity=$ceph_capacity
       ;;

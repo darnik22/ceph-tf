@@ -1,3 +1,10 @@
+data "template_file" "mgt_ip" {
+  template = "$${mgt_ip}"
+  vars {
+    mgt_ip = "${openstack_networking_floatingip_v2.ceph-mgt.address}"
+  }
+}
+
 resource "openstack_networking_floatingip_v2" "ceph-mgt" {
   depends_on = ["openstack_compute_instance_v2.ceph-mgt"]
   port_id  = "${element(openstack_networking_port_v2.mgt-port.*.id, count.index)}"
@@ -108,12 +115,15 @@ resource "null_resource" "provision-mon" {
 
 resource "null_resource" "provision-mgt" {
   depends_on = ["openstack_networking_floatingip_v2.ceph-mgt","null_resource.provision-osd","null_resource.provision-mon","openstack_compute_volume_attach_v2.vas","openstack_dns_recordset_v2.recordset"]
-  # provisioner "local-exec" {
-  #   command = "./local-setup.sh ${var.project} ${var.ceph-mon_count} ${var.ceph-osd_count} ${var.client_count} ${var.provider_count}"
-  # }
-  triggers {
-    cluster_instance_ids = "${join(",", openstack_networking_floatingip_v2.ceph-mgt.*.address)}"
+  provisioner "local-exec" {
+    command = "./local-setup.sh ${var.project} ${var.ceph-mon_count} ${var.ceph-osd_count} ${var.client_count} ${var.provider_count}"
   }
+  provisioner "local-exec" {
+    command = "echo ${openstack_networking_floatingip_v2.ceph-mgt.address} > MGT_IP"
+  }
+  # triggers {
+  #   cluster_instance_ids = "${join(",", openstack_networking_floatingip_v2.ceph-mgt.*.address)}"
+  # }
   connection {
       host     = "${openstack_networking_floatingip_v2.ceph-mgt.address}"
       user     = "${var.ssh_user_name}"
@@ -222,16 +232,15 @@ resource "openstack_networking_port_v2" "mons-port" {
   }
 }
 
-resource "null_resource" "local-setup" {
-  provisioner "local-exec" {
-    command = "./local-setup.sh ${var.project} ${var.ceph-mon_count} ${var.ceph-osd_count} ${var.client_count} ${var.provider_count}"
-  }
-}
+# resource "null_resource" "local-setup" {
+#   provisioner "local-exec" {
+#     command = "./local-setup.sh ${var.project} ${var.ceph-mon_count} ${var.ceph-osd_count} ${var.client_count} ${var.provider_count}"
+#   }
+# }
 
 resource "openstack_compute_keypair_v2" "otc" {
-  depends_on = ["null_resource.local-setup"]
+#  depends_on = ["null_resource.local-setup"]
   name       = "${var.project}-otc"
-  #  public_key = "${file("${var.ssh_key_file}.pub")}"
   public_key = "${file("${var.public_key_file}")}"
 }
 
