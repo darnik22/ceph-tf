@@ -42,6 +42,20 @@
         - ceph-mon
         - ceph-osd
 
+- hosts: mons osds
+  become: yes
+  become_user: root
+  tasks:
+    - name: Config ens6
+      lineinfile:
+        path: /etc/network/interfaces
+        line: "{{item}}"
+      with_items:
+        - auto ens6
+        - iface ens6 inet dhcp
+    - name: Bring ens6 up
+      shell: ifup ens6
+    
 - hosts: mgt
   tasks:
 #    - name: Print groups

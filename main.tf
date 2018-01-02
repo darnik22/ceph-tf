@@ -63,7 +63,7 @@ resource "null_resource" "provision-osd" {
 #  depends_on = ["openstack_networking_floatingip_v2.ceph-osds"]
   connection {
     bastion_host = "${openstack_networking_floatingip_v2.ceph-mgt.0.address}"
-    host     = "${element(openstack_compute_instance_v2.ceph-osds.*.access_ip_v4, count.index)}"
+    host     = "${element(openstack_compute_instance_v2.ceph-osds.*.network.0.fixed_ip_v4, count.index)}"
     user     = "${var.ssh_user_name}"
     #    private_key = "${file(var.ssh_key_file)}"
     agent = true
@@ -97,7 +97,6 @@ resource "null_resource" "provision-mon" {
   connection {
     host     = "${element(openstack_networking_floatingip_v2.ceph-mons.*.address, count.index)}"
     user     = "${var.ssh_user_name}"
-    #    private_key = "${file(var.ssh_key_file)}"
     agent = true
   }
   provisioner "file" {
@@ -106,7 +105,7 @@ resource "null_resource" "provision-mon" {
   }
   provisioner "remote-exec" {
     inline = [
-      "sudo cp sources.list ${var.sources_list_dest}", # if debmirror at #      "sudo apt-add-repository -y 'deb http://nova.clouds.archive.ubuntu.com/ubuntu/ xenial main restricted universe multiverse'", # if debmirror at OTC is not working
+      "sudo cp sources.list ${var.sources_list_dest}", 
       "sudo apt-get -y update",
       "sudo apt-get -y install python",
     ]
@@ -139,7 +138,7 @@ resource "null_resource" "provision-mgt" {
     destination = "playbooks.tgz"
   }
   provisioner "file" {
-    content = "127.0.0.1 localhost\n::1 ip6-localhost ip6-loopback\nfe00::0 ip6-localnet\nff00::0 ip6-mcastprefix\nff02::1 ip6-allnodes\nff02::2 ip6-allrouters\nff02::3 ip6-allhosts\n${join("\n", formatlist("%s %s", openstack_compute_instance_v2.ceph-osds.*.access_ip_v4, openstack_compute_instance_v2.ceph-osds.*.name))}\n${join("\n", formatlist("%s %s", openstack_compute_instance_v2.ceph-mons.*.access_ip_v4, openstack_compute_instance_v2.ceph-mons.*.name))}\n${join("\n", formatlist("%s %s", openstack_compute_instance_v2.ceph-mgt.*.access_ip_v4, openstack_compute_instance_v2.ceph-mgt.*.name))}\n${join("\n", formatlist("%s %s", openstack_compute_instance_v2.clients.*.access_ip_v4, openstack_compute_instance_v2.clients.*.name))}\n${join("\n", formatlist("%s %s", openstack_compute_instance_v2.providers.*.access_ip_v4, openstack_compute_instance_v2.providers.*.name))}\n"
+    content = "127.0.0.1 localhost\n::1 ip6-localhost ip6-loopback\nfe00::0 ip6-localnet\nff00::0 ip6-mcastprefix\nff02::1 ip6-allnodes\nff02::2 ip6-allrouters\nff02::3 ip6-allhosts\n${join("\n", formatlist("%s %s", openstack_compute_instance_v2.ceph-osds.*.network.0.fixed_ip_v4, openstack_compute_instance_v2.ceph-osds.*.name))}\n${join("\n", formatlist("%s %s", openstack_compute_instance_v2.ceph-mons.*.network.0.fixed_ip_v4, openstack_compute_instance_v2.ceph-mons.*.name))}\n${join("\n", formatlist("%s %s", openstack_compute_instance_v2.ceph-mgt.*.network.0.fixed_ip_v4, openstack_compute_instance_v2.ceph-mgt.*.name))}\n${join("\n", formatlist("%s %s", openstack_compute_instance_v2.clients.*.network.0.fixed_ip_v4, openstack_compute_instance_v2.clients.*.name))}\n${join("\n", formatlist("%s %s", openstack_compute_instance_v2.providers.*.network.0.fixed_ip_v4, openstack_compute_instance_v2.providers.*.name))}\n"
     destination = "hosts.tmp"
   }
   provisioner "file" {
@@ -187,6 +186,11 @@ resource "openstack_compute_instance_v2" "ceph-osds" {
     uuid = "${openstack_networking_network_v2.network.id}"
     access_network = true
   }
+  network {
+    port = "${element(openstack_networking_port_v2.osds-ceph-port.*.id, count.index)}"
+    uuid = "${openstack_networking_network_v2.ceph.id}"
+    access_network = true
+  }
 }
 
 resource "openstack_networking_port_v2" "osds-port" {
@@ -198,6 +202,18 @@ resource "openstack_networking_port_v2" "osds-port" {
   admin_state_up     = "true"
   fixed_ip           = {
     subnet_id        = "${openstack_networking_subnet_v2.subnet.id}"
+  }
+}
+
+resource "openstack_networking_port_v2" "osds-ceph-port" {
+  count              = "${var.ceph-osd_count}"
+  network_id         = "${openstack_networking_network_v2.ceph.id}"
+  security_group_ids = [
+    "${openstack_compute_secgroup_v2.secgrp_ceph.id}",
+  ]
+  admin_state_up     = "true"
+  fixed_ip           = {
+    subnet_id        = "${openstack_networking_subnet_v2.ceph.id}"
   }
 }
 
@@ -218,6 +234,11 @@ resource "openstack_compute_instance_v2" "ceph-mons" {
     uuid = "${openstack_networking_network_v2.network.id}"
     access_network = true
   }
+  network {
+    port = "${element(openstack_networking_port_v2.mons-ceph-port.*.id, count.index)}"
+    uuid = "${openstack_networking_network_v2.ceph.id}"
+    access_network = true
+  }
 }
 
 resource "openstack_networking_port_v2" "mons-port" {
@@ -232,14 +253,19 @@ resource "openstack_networking_port_v2" "mons-port" {
   }
 }
 
-# resource "null_resource" "local-setup" {
-#   provisioner "local-exec" {
-#     command = "./local-setup.sh ${var.project} ${var.ceph-mon_count} ${var.ceph-osd_count} ${var.client_count} ${var.provider_count}"
-#   }
-# }
+resource "openstack_networking_port_v2" "mons-ceph-port" {
+  count              = "${var.ceph-mon_count}"
+  network_id         = "${openstack_networking_network_v2.ceph.id}"
+  security_group_ids = [
+    "${openstack_compute_secgroup_v2.secgrp_ceph.id}",
+  ]
+  admin_state_up     = "true"
+  fixed_ip           = {
+    subnet_id        = "${openstack_networking_subnet_v2.ceph.id}"
+  }
+}
 
 resource "openstack_compute_keypair_v2" "otc" {
-#  depends_on = ["null_resource.local-setup"]
   name       = "${var.project}-otc"
   public_key = "${file("${var.public_key_file}")}"
 }
@@ -253,6 +279,19 @@ resource "openstack_networking_subnet_v2" "subnet" {
   name            = "${var.project}-subnet"
   network_id      = "${openstack_networking_network_v2.network.id}"
   cidr            = "192.168.100.0/24"
+  ip_version      = 4
+  dns_nameservers = ["8.8.8.8", "100.125.4.25"]
+}
+
+resource "openstack_networking_network_v2" "ceph" {
+  name           = "${var.project}-ceph"
+  admin_state_up = "true"
+}
+
+resource "openstack_networking_subnet_v2" "ceph" {
+  name            = "${var.project}-ceph"
+  network_id      = "${openstack_networking_network_v2.ceph.id}"
+  cidr            = "192.168.200.0/24"
   ip_version      = 4
   dns_nameservers = ["8.8.8.8", "100.125.4.25"]
 }
@@ -276,6 +315,11 @@ resource "openstack_networking_router_v2" "router" {
 resource "openstack_networking_router_interface_v2" "interface" {
   router_id = "${openstack_networking_router_v2.router.id}"
   subnet_id = "${openstack_networking_subnet_v2.subnet.id}"
+}
+
+resource "openstack_networking_router_interface_v2" "ceph" {
+  router_id = "${openstack_networking_router_v2.router.id}"
+  subnet_id = "${openstack_networking_subnet_v2.ceph.id}"
 }
 
 resource "openstack_compute_secgroup_v2" "secgrp_jmp" {
